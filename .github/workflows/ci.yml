@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev]
+      - name: Run test suite
+        run: pytest -q
+      - name: Validate scanner against dvmcp (fails if detection regresses)
+        run: python scripts/validate.py
+
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install .
+      - name: Static scan of dvmcp -> SARIF
+        run: python -m mcpscan --sarif mcpscan.sarif static dvmcp
+      - name: Upload SARIF as a build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcpscan-sarif
+          path: mcpscan.sarif
+      - name: Upload SARIF to GitHub code scanning
+        uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true
+        with:
+          sarif_file: mcpscan.sarif
+          category: dvmcp-intentional
