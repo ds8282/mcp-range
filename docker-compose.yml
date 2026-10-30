@@ -1,0 +1,43 @@
+# dvmcp training range.
+#
+# SAFETY MODEL (read this):
+#   * The MCP port is published to the HOST on 127.0.0.1 ONLY. It is never
+#     reachable from other machines. Changing this to 0.0.0.0 exposes
+#     intentionally vulnerable code to your network -- do not.
+#   * Inside the container the server binds 0.0.0.0 (via the override flag)
+#     only so the host-loopback publish can forward to it. The container sits
+#     on an isolated bridge network. The layered control is: isolated bridge
+#     + host-loopback-only publish. That is why the in-container override is
+#     acceptable here and nowhere else.
+services:
+  dvmcp:
+    build: .
+    image: dvmcp:latest
+    # Serve loopback HTTP so mcpscan's live checks have a URL to point at.
+    command:
+      - "--transport"
+      - "streamable-http"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8731"
+      - "--i-know-this-is-dangerous"
+      - "--real-exec"          # genuine shell sink for c05, contained in here
+    ports:
+      - "127.0.0.1:8731:8731"   # host-loopback ONLY. Never 0.0.0.0.
+    networks:
+      - range
+    read_only: true
+    tmpfs:
+      - /app/lab               # lab files live in tmpfs; nothing persists
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+# A dedicated bridge so the range is isolated from your other containers.
+# The SSRF challenge (c04) gets its canary target as a sibling service on
+# this same network in Milestone 3, so it never needs real internet egress.
+networks:
+  range:
+    driver: bridge
